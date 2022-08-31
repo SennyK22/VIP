@@ -8,7 +8,7 @@
 
 ConVar g_cvShowDmgOnlyVip;
 ConVar g_cvShowVipJoinInfo;
-ConVar g_cvVipDoubleJump;
+//ConVar g_cvVipDoubleJump;
 
 int    g_iJumps[MAXPLAYERS + 1];
 int    g_iJumpMax;
@@ -19,7 +19,7 @@ Handle g_cvJumpBoost  = INVALID_HANDLE;
 Handle g_cvJumpEnable = INVALID_HANDLE;
 Handle g_cvJumpMax    = INVALID_HANDLE;
 Handle g_cvJumpKnife  = INVALID_HANDLE;
-bool   g_bDoubleJump  = true;
+//bool   g_bDoubleJump  = true;
 float  g_flBoost      = 250.0;
 
 public Plugin myinfo =
@@ -38,7 +38,7 @@ public void OnPluginStart()
 
 	g_cvShowDmgOnlyVip  = CreateConVar("sk_showdmgforvip", "0", "Pokazywanie zadanego dmg tylko dla VIPa, 1 - Włączone 0 - Wyłączone");
 	g_cvShowVipJoinInfo = CreateConVar("sk_showinfovipjoin", "1", "Pokazywanie wiadomości o wejściu VIPa na serwer, 1 - Włączone 0 - Wyłączone");
-	g_cvVipDoubleJump   = CreateConVar("sk_vipdoublejump", "1", "VIP ma multijump'a, 1 - Włączone 0 - Wyłączone");
+	//g_cvVipDoubleJump   = CreateConVar("sk_vipdoublejump", "1", "VIP ma multijump'a, 1 - Włączone 0 - Wyłączone");
 	g_cvJumpMax    		= CreateConVar("sk_doublejumpmax", "1", "Maksymalna liczba skoków w multijump", _, true, 1.0, true, 5.0);
 
 
@@ -49,7 +49,7 @@ public void OnPluginStart()
 	HookConVarChange(g_cvJumpBoost, convar_ChangeBoost);
 	HookConVarChange(g_cvJumpEnable, convar_ChangeEnable);
 	HookConVarChange(g_cvJumpMax, convar_ChangeMax);
-	g_bDoubleJump = GetConVarBool(g_cvJumpEnable);
+	//g_bDoubleJump = GetConVarBool(g_cvJumpEnable);
 	g_flBoost     = GetConVarFloat(g_cvJumpBoost);
 	g_iJumpMax    = GetConVarInt(g_cvJumpMax);
 	HookEventEx("player_spawn", OnPlayerSpawn, EventHookMode_Post);
@@ -65,6 +65,7 @@ public void OnClientPostAdminCheck(int client)
 public Action OnPlayerRunCmd(int client, int& buttons, int& impulse, float vel[3], float angles[3], int& weapon)
 {
 	DoubleJump(client);
+	return Plugin_Handled;
 }
 
 public void OnPlayerSpawn(Handle event, const char[] name, bool dontBroadcast)
@@ -139,14 +140,6 @@ public void convar_ChangeBoost(Handle convar, const char[] oldVal, const char[] 
 
 public void convar_ChangeEnable(Handle convar, const char[] oldVal, const char[] newVal)
 {
-	if (StringToInt(newVal) >= 1)
-	{
-		g_bDoubleJump = true;
-	}
-	else
-	{
-		g_bDoubleJump = false;
-	}
 }
 
 public void convar_ChangeMax(Handle convar, const char[] oldVal, const char[] newVal)
