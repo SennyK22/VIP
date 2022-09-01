@@ -32,8 +32,8 @@ float  g_flBoost      = 250.0;
 
 //\\//\\//\\//\\// HANDLES \\//\\//\\//\\//\\
 Handle g_cvJumpBoost  = INVALID_HANDLE;
-//Handle g_cvJumpEnable = INVALID_HANDLE;
 Handle g_cvJumpMax    = INVALID_HANDLE;
+//Handle g_cvJumpEnable = INVALID_HANDLE;
 //Handle g_cvJumpKnife  = INVALID_HANDLE;
 //\\//\\//\\//\\// END HANDLES \\//\\//\\//\\//\\
 
@@ -56,13 +56,13 @@ public void OnPluginStart()
 	g_cvShowVipJoinInfo = CreateConVar("sk_showinfovipjoin", "1", "Pokazywanie wiadomości o wejściu VIPa na serwer, 1 - Włączone 0 - Wyłączone");
 	g_cvVipDoubleJump   = CreateConVar("sk_vipdoublejump", "1", "VIP ma multijump'a, 1 - Włączone 0 - Wyłączone");
 	g_cvJumpMax         = CreateConVar("sk_doublejumpmax", "1", "Maksymalna liczba skoków w multijump", _, true, 1.0, true, 5.0);
+	g_cvJumpBoost  		= CreateConVar("sk_doublejumpboost", "260.0", "Wartość o ile dostaniemy boost jumpa", _, true, 260.0, true, 500.0);
 	//g_cvJumpKnife  		= CreateConVar("csgo_doublejump_knife", "1", "disable(0) / enable(1) double-jumping only on Knife Level for AR (GunGame)", _, true, 0.0, true, 1.0);
 	//g_cvJumpEnable 		= CreateConVar("csgo_doublejump_enabled", "1", "disable(0) / enable(1) double-jumping", _);
-	g_cvJumpBoost  		= CreateConVar("sk_doublejumpboost", "260.0", "Wartość o ile dostaniemy boost jumpa", _, true, 260.0, true, 500.0);
-
+	
 	HookConVarChange(g_cvJumpBoost, convar_ChangeBoost);
-	//HookConVarChange(g_cvJumpEnable, convar_ChangeEnable);
 	HookConVarChange(g_cvJumpMax, convar_ChangeMax);
+	//HookConVarChange(g_cvJumpEnable, convar_ChangeEnable);
 	// g_bDoubleJump = GetConVarBool(g_cvJumpEnable);
 	g_flBoost  = GetConVarFloat(g_cvJumpBoost);
 	g_iJumpMax = GetConVarInt(g_cvJumpMax);
