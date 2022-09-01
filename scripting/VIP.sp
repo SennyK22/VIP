@@ -24,7 +24,8 @@ float g_flBoost = 250.0;
 Handle g_cvJumpBoost = INVALID_HANDLE;
 Handle g_cvJumpMax   = INVALID_HANDLE;
 // Handle g_cvJumpEnable = INVALID_HANDLE;
-// Handle g_cvJumpKnife  = INVALID_HANDLE;
+Handle g_cvJumpKnife = INVALID_HANDLE;
+
 public Plugin myinfo =
 {
 	name        = "VIP",
@@ -56,10 +57,10 @@ public void OnPluginStart()
 	HookEventEx("player_spawn", OnPlayerSpawn, EventHookMode_Post);
 
 	RegConsoleCmd("sm_vip", MenuVIP);
-	RegConsoleCmd("sm_buyvip", MenuBuyVIP);
-	RegConsoleCmd("sm_bvip", MenuBuyVIP);
-	RegConsoleCmd("sm_infovip", MenuInfoVIP);
-	RegConsoleCmd("sm_author", MenuAuthorVIP);
+	// RegConsoleCmd("sm_buyvip", MenuBuyVIP);
+	// RegConsoleCmd("sm_bvip", MenuBuyVIP);
+	// RegConsoleCmd("sm_infovip", MenuInfoVIP);
+	// RegConsoleCmd("sm_author", MenuAuthorVIP);
 
 	AutoExecConfig(true, "SennyK_VIP");
 }
@@ -134,7 +135,7 @@ public Action OnPlayerRunCmd(int client, int& buttons, int& impulse, float vel[3
 	return Plugin_Handled;
 }
 
-/*public void OnPlayerSpawn(Handle event, const char[] name, bool dontBroadcast)
+public void OnPlayerSpawn(Handle event, const char[] name, bool dontBroadcast)
 {
 	int client          = GetClientOfUserId(GetEventInt(event, "userid"));
 	clientlevel[client] = 0;
@@ -145,7 +146,7 @@ public Action OnPlayerRunCmd(int client, int& buttons, int& impulse, float vel[3
 			clientlevel[client] = 1;
 		}
 	}
-}*/
+}
 
 void DoubleJump(int client)
 {
@@ -186,20 +187,19 @@ void ReJump(int client)
 {
 	if (g_cvVipDoubleJump)
 	{
-		if (!CheckCommandAccess(client, "", ADMFLAG_RESERVATION, true))
+		if (CheckCommandAccess(client, "", ADMFLAG_RESERVATION, true))
 		{
-			Plugin_Handled;
+			if (1 <= g_iJumps[client] <= g_iJumpMax)
+			{
+				g_iJumps[client]++;
+				float vVel[3];
+				GetEntPropVector(client, Prop_Data, "m_vecVelocity", vVel);
+				vVel[2] = g_flBoost;
+				TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, vVel);
+				LogMessage("rejump");
+			}
+			LogMessage("i chuj");
 		}
-		if (1 <= g_iJumps[client] <= g_iJumpMax)
-		{
-			g_iJumps[client]++;
-			float vVel[3];
-			GetEntPropVector(client, Prop_Data, "m_vecVelocity", vVel);
-			vVel[2] = g_flBoost;
-			TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, vVel);
-			LogMessage("rejump");
-		}
-		LogMessage("i chuj");
 	}
 }
 
@@ -208,10 +208,9 @@ public void convar_ChangeBoost(Handle convar, const char[] oldVal, const char[] 
 	g_flBoost = StringToFloat(newVal);
 }
 
-//public void convar_ChangeEnable(Handle convar, const char[] oldVal, const char[] newVal)
+// public void convar_ChangeEnable(Handle convar, const char[] oldVal, const char[] newVal)
 //{
-//}
-
+// }
 public void convar_ChangeMax(Handle convar, const char[] oldVal, const char[] newVal)
 {
 	g_iJumpMax = StringToInt(newVal);
@@ -255,23 +254,32 @@ public bool IsValidClient(int client)
 
 public Action MenuVIP(int client, int args)
 {
-    Menu VIP = new Menu(VIP);
+	Menu VIP = new Menu(VIPHandle);
 
-    VIP.SetTitle("VIP");
-    VIP.AddItem("sm_buyvip", "Kup VIP");
-    VIP.AddItem("sm_infovip", "Co daje VIP");
-    VIP.AddItem("sm_testvip", "Wytestuj VIP");
-    VIP.AddItem("sm_author", "Info o Autorze");
+	VIP.SetTitle("VIP");
+	VIP.AddItem("sm_buyvip", "Kup VIP");
+	VIP.AddItem("sm_infovip", "Co daje VIP");
+	VIP.AddItem("sm_testvip", "Wytestuj VIP");
+	VIP.AddItem("sm_author", "Info o Autorze");
 
-    VIP.Display(client, MENU_TIME_FOREVER);
+	VIP.Display(client, MENU_TIME_FOREVER);
 
-    return Plugin_Handled;
+	return Plugin_Handled;
 }
 
-public int VIP(Menu VIP, MenuAction action, int client, int choice)
+public int VIPHandle(Menu VIP, MenuAction action, int client, int choice)
 {
-    switch(action)
-    {
-        case MenuAction
-    }
+	switch (action)
+	{
+		case MenuAction_Start:
+		{
+			LogMessage("Start menu");
+		}
+		case MenuAction_Select:
+		{
+			char info[32];
+			VIP.GetItem(choice, info, sizeof(info));
+			PrintToServer("User %d wybrał %s", client, info);
+		}
+	}
 }
