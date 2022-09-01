@@ -17,14 +17,14 @@ int   g_iJumpMax;
 int   g_fLastButtons[MAXPLAYERS + 1];
 int   g_fLastFlags[MAXPLAYERS + 1];
 int   clientlevel[MAXPLAYERS + 1];
-float g_flBoost = 250.0;
-// bool   g_bDoubleJump  = true;
+float g_flBoost     = 250.0;
+bool  g_bDoubleJump = true;
 
 // HANDLES
-Handle g_cvJumpBoost = INVALID_HANDLE;
-Handle g_cvJumpMax   = INVALID_HANDLE;
-// Handle g_cvJumpEnable = INVALID_HANDLE;
-Handle g_cvJumpKnife = INVALID_HANDLE;
+Handle g_cvJumpBoost  = INVALID_HANDLE;
+Handle g_cvJumpMax    = INVALID_HANDLE;
+Handle g_cvJumpEnable = INVALID_HANDLE;
+Handle g_cvJumpKnife  = INVALID_HANDLE;
 
 public Plugin myinfo =
 {
@@ -45,15 +45,15 @@ public void OnPluginStart()
 	g_cvVipDoubleJump   = CreateConVar("sk_vipdoublejump", "1", "VIP ma multijump'a, 1 - Włączone 0 - Wyłączone");
 	g_cvJumpMax         = CreateConVar("sk_doublejumpmax", "1", "Maksymalna liczba skoków w multijump", _, true, 1.0, true, 5.0);
 	g_cvJumpBoost       = CreateConVar("sk_doublejumpboost", "260.0", "Wartość o ile dostaniemy boost jumpa", _, true, 260.0, true, 500.0);
-	// g_cvJumpKnife  		= CreateConVar("csgo_doublejump_knife", "1", "disable(0) / enable(1) double-jumping only on Knife Level for AR (GunGame)", _, true, 0.0, true, 1.0);
-	// g_cvJumpEnable 		= CreateConVar("csgo_doublejump_enabled", "1", "disable(0) / enable(1) double-jumping", _);
+	g_cvJumpKnife       = CreateConVar("csgo_doublejump_knife", "1", "disable(0) / enable(1) double-jumping only on Knife Level for AR (GunGame)", _, true, 0.0, true, 1.0);
+	g_cvJumpEnable      = CreateConVar("csgo_doublejump_enabled", "1", "disable(0) / enable(1) double-jumping", _);
 
 	HookConVarChange(g_cvJumpBoost, convar_ChangeBoost);
 	HookConVarChange(g_cvJumpMax, convar_ChangeMax);
-	// HookConVarChange(g_cvJumpEnable, convar_ChangeEnable);
-	//  g_bDoubleJump = GetConVarBool(g_cvJumpEnable);
-	g_flBoost  = GetConVarFloat(g_cvJumpBoost);
-	g_iJumpMax = GetConVarInt(g_cvJumpMax);
+	HookConVarChange(g_cvJumpEnable, convar_ChangeEnable);
+	g_bDoubleJump = GetConVarBool(g_cvJumpEnable);
+	g_flBoost     = GetConVarFloat(g_cvJumpBoost);
+	g_iJumpMax    = GetConVarInt(g_cvJumpMax);
 	HookEventEx("player_spawn", OnPlayerSpawn, EventHookMode_Post);
 
 	RegConsoleCmd("sm_vip", MenuVIP);
@@ -185,10 +185,10 @@ void Landed(int client)
 
 void ReJump(int client)
 {
-	if (g_cvVipDoubleJump)
-	{
-		if (CheckCommandAccess(client, "", ADMFLAG_RESERVATION, true))
-		{
+	//if (g_cvVipDoubleJump)
+	//{
+		//if (CheckCommandAccess(client, "", ADMFLAG_RESERVATION, true))
+		//{
 			if (1 <= g_iJumps[client] <= g_iJumpMax)
 			{
 				g_iJumps[client]++;
@@ -199,8 +199,8 @@ void ReJump(int client)
 				LogMessage("rejump");
 			}
 			LogMessage("i chuj");
-		}
-	}
+		//}
+	//}
 }
 
 public void convar_ChangeBoost(Handle convar, const char[] oldVal, const char[] newVal)
@@ -208,9 +208,18 @@ public void convar_ChangeBoost(Handle convar, const char[] oldVal, const char[] 
 	g_flBoost = StringToFloat(newVal);
 }
 
-// public void convar_ChangeEnable(Handle convar, const char[] oldVal, const char[] newVal)
-//{
-// }
+public void convar_ChangeEnable(Handle convar, const char[] oldVal, const char[] newVal)
+{
+	if (StringToInt(newVal) >= 1)
+	{
+		g_bDoubleJump = true;
+	}
+	else
+	{
+		g_bDoubleJump = false;
+	}
+}
+
 public void convar_ChangeMax(Handle convar, const char[] oldVal, const char[] newVal)
 {
 	g_iJumpMax = StringToInt(newVal);
