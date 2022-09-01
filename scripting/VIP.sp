@@ -11,6 +11,7 @@
 #include "VIP/show_damage.sp"
 #include "VIP/welcome_message.sp"
 #include "VIP/multi_jump.sp"
+#include "VIP/menu_vip.sp"
 #endif
 //\\//\\//\\//\\// END MODULES \\//\\//\\//\\//\\
 
@@ -67,6 +68,12 @@ public void OnPluginStart()
 	g_flBoost  = GetConVarFloat(g_cvJumpBoost);
 	g_iJumpMax = GetConVarInt(g_cvJumpMax);
 	HookEventEx("player_spawn", OnPlayerSpawn, EventHookMode_Post);
+
+	RegConsoleCmd("sm_vip", MenuVIP);
+	RegConsoleCmd("sm_buyvip", MenuBuyVIP);
+	RegConsoleCmd("sm_bvip", MenuBuyVIP);
+	RegConsoleCmd("sm_infovip", MenuInfoVIP);
+	RegConsoleCmd("sm_author", MenuAuthorVIP);
 
 	AutoExecConfig(true, "SennyK_VIP");
 }
