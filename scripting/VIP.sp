@@ -22,6 +22,7 @@ Handle g_cvJumpKnife  = INVALID_HANDLE;
 //bool   g_bDoubleJump  = true;
 float  g_flBoost      = 250.0;
 
+// Test kompilacji
 public Plugin myinfo =
 {
 	name        = "VIP",
