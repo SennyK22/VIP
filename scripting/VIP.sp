@@ -1,3 +1,4 @@
+#include <cstrike>
 #include <multicolors>
 #include <sdkhooks>
 #include <sdktools>
@@ -6,61 +7,41 @@
 #pragma newdecls required
 #pragma semicolon 1
 
-// CONVARS
 ConVar g_cvShowDmgOnlyVip;
 ConVar g_cvShowVipJoinInfo;
-ConVar g_cvVipDoubleJump;
+ConVar g_cvVipFlag;
+ConVar g_cvDoubleJump;
+ConVar g_cvFreeGrenades;
 
-// GLOBALS
-int   g_iJumps[MAXPLAYERS + 1];
-int   g_iJumpMax;
-int   g_fLastButtons[MAXPLAYERS + 1];
-int   g_fLastFlags[MAXPLAYERS + 1];
-int   clientlevel[MAXPLAYERS + 1];
-float g_flBoost     = 250.0;
-bool  g_bDoubleJump = true;
-
-// HANDLES
-Handle g_cvJumpBoost  = INVALID_HANDLE;
-Handle g_cvJumpMax    = INVALID_HANDLE;
-Handle g_cvJumpEnable = INVALID_HANDLE;
-Handle g_cvJumpKnife  = INVALID_HANDLE;
+int g_iFreeVIP            = 0;
+int g_iRounds             = 0;
+int g_iWeaponMenuReceived = 0;
 
 public Plugin myinfo =
 {
 	name        = "VIP",
 	author      = "SennyK",
 	description = "VIP CSGO",
-	version     = "1.1",
+	version     = "1.2",
 	url         = "https://github.com/SennyK22/VIP"
 };
 
 public void OnPluginStart()
 {
+	RegConsoleCmd("sm_vip", cmd_vip);
+	RegConsoleCmd("sm_buyvip", cmd_buyvip);
+	RegConsoleCmd("sm_infovip", cmd_infovip);
+	RegConsoleCmd("sm_vipinfo", cmd_infovip);
+	RegConsoleCmd("sm_weapons", cmd_weaponMenu);
 	HookEvent("player_hurt", player_hurt, EventHookMode_Post);
-	// HookEvent("player_jump", doublejump_event, EventHookMode_Post);
+	HookEvent("round_start", onRoundStart);
+	HookEvent("player_spawn", onPlayerSpawn);
 
 	g_cvShowDmgOnlyVip  = CreateConVar("sk_showdmgforvip", "0", "Pokazywanie zadanego dmg tylko dla VIPa, 1 - Włączone 0 - Wyłączone");
 	g_cvShowVipJoinInfo = CreateConVar("sk_showinfovipjoin", "1", "Pokazywanie wiadomości o wejściu VIPa na serwer, 1 - Włączone 0 - Wyłączone");
-	g_cvVipDoubleJump   = CreateConVar("sk_vipdoublejump", "1", "VIP ma multijump'a, 1 - Włączone 0 - Wyłączone");
-	g_cvJumpMax         = CreateConVar("sk_doublejumpmax", "1", "Maksymalna liczba skoków w multijump", _, true, 1.0, true, 5.0);
-	g_cvJumpBoost       = CreateConVar("sk_doublejumpboost", "260.0", "Wartość o ile dostaniemy boost jumpa", _, true, 260.0, true, 500.0);
-	g_cvJumpKnife       = CreateConVar("csgo_doublejump_knife", "1", "disable(0) / enable(1) double-jumping only on Knife Level for AR (GunGame)", _, true, 0.0, true, 1.0);
-	g_cvJumpEnable      = CreateConVar("csgo_doublejump_enabled", "1", "disable(0) / enable(1) double-jumping", _);
-
-	HookConVarChange(g_cvJumpBoost, convar_ChangeBoost);
-	HookConVarChange(g_cvJumpMax, convar_ChangeMax);
-	HookConVarChange(g_cvJumpEnable, convar_ChangeEnable);
-	g_bDoubleJump = GetConVarBool(g_cvJumpEnable);
-	g_flBoost     = GetConVarFloat(g_cvJumpBoost);
-	g_iJumpMax    = GetConVarInt(g_cvJumpMax);
-	HookEventEx("player_spawn", OnPlayerSpawn, EventHookMode_Post);
-
-	RegConsoleCmd("sm_vip", MenuVIP);
-	// RegConsoleCmd("sm_buyvip", MenuBuyVIP);
-	// RegConsoleCmd("sm_bvip", MenuBuyVIP);
-	// RegConsoleCmd("sm_infovip", MenuInfoVIP);
-	// RegConsoleCmd("sm_author", MenuAuthorVIP);
+	g_cvVipFlag         = CreateConVar("vip_flag", "a", "Required flag for the Vip player (Leave empty so all the players will have VIP).");
+	g_cvDoubleJump      = CreateConVar("double_jump", "1", "Is the VIP player supposed to have a double jump?");
+	g_cvFreeGrenades    = CreateConVar("free_grenades", "1", "Is the VIP player supposed to have a free grenades?");
 
 	AutoExecConfig(true, "SennyK_VIP");
 }
@@ -75,12 +56,10 @@ public Action Timer_Welcome(Handle timer, any client)
 	if (!IsClientConnected(client))
 		return Plugin_Continue;
 
-	int flags = GetUserFlagBits(client);
-
 	char s_name[64];
 	GetClientName(client, s_name, sizeof(s_name));
 
-	if (flags & ADMFLAG_RESERVATION)
+	if (isPlayerVip(client))
 	{
 		for (int i = 1; i <= MaxClients; i++)
 		{
@@ -109,10 +88,12 @@ public Action player_hurt(Handle event, const char[] name, bool dontBroadcast)
 		{
 			if (g_cvShowDmgOnlyVip)
 			{
-				if (!CheckCommandAccess(attacker, "", ADMFLAG_RESERVATION, true))
+				if (!isPlayerVip(attacker))
 				{
+					LogMessage("brak vipa?");
 					return Plugin_Handled;
 				}
+				LogMessage("jest vip..");
 			}
 
 			int i_dmg = GetEventInt(event, "dmg_health");
@@ -131,164 +112,347 @@ public Action player_hurt(Handle event, const char[] name, bool dontBroadcast)
 
 public Action OnPlayerRunCmd(int client, int& buttons, int& impulse, float vel[3], float angles[3], int& weapon)
 {
-	DoubleJump(client);
+	if (isPlayerVip(client) && IsPlayerAlive(client) && g_cvDoubleJump.BoolValue)
+	{
+		static int g_fLastButtons[MAXPLAYERS + 1], g_fLastFlags[MAXPLAYERS + 1], g_iJumps[MAXPLAYERS + 1], fCurFlags, fCurButtons;
+		fCurFlags   = GetEntityFlags(client);
+		fCurButtons = GetClientButtons(client);
+		if (g_fLastFlags[client] & FL_ONGROUND && !(fCurFlags & FL_ONGROUND) && !(g_fLastButtons[client] & IN_JUMP) && fCurButtons & IN_JUMP) g_iJumps[client]++;
+		else if (fCurFlags & FL_ONGROUND) g_iJumps[client] = 0;
+		else if (!(g_fLastButtons[client] & IN_JUMP) && fCurButtons & IN_JUMP && g_iJumps[client] == 1)
+		{
+			g_iJumps[client]++;
+			float vVel[3];
+			GetEntPropVector(client, Prop_Data, "m_vecVelocity", vVel);
+			vVel[2] = 370.0;
+			TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, vVel);
+		}
+
+		g_fLastFlags[client]   = fCurFlags;
+		g_fLastButtons[client] = fCurButtons;
+	}
+	return Plugin_Continue;
+}
+
+public Action cmd_vip(int client, int args)
+{
+	Menu vipMenu = new Menu(vipMenu_Handler);
+	vipMenu.SetTitle("VIP");
+	vipMenu.AddItem("1", "Kup VIP'a");
+	vipMenu.AddItem("1", "Co daje VIP?");
+	// vipMenu.AddItem("3", "Wytestuj VIP'a");
+	vipMenu.AddItem("4", "Informacje o autorze");
+	vipMenu.Display(client, 0);
+
 	return Plugin_Handled;
 }
 
-public void OnPlayerSpawn(Handle event, const char[] name, bool dontBroadcast)
+public int vipMenu_Handler(Menu vipMenu, MenuAction action, int client, int itemNum)
 {
-	int client          = GetClientOfUserId(GetEventInt(event, "userid"));
-	clientlevel[client] = 0;
-	if (GetConVarInt(g_cvJumpKnife) == 1)
+	if (action == MenuAction_Select)
 	{
-		if (LastLevel(client) == true)
-		{
-			clientlevel[client] = 1;
-		}
+		char item[32];
+		vipMenu.GetItem(itemNum, item, sizeof(item));
+
+		if (StrEqual(item, "1"))
+			ClientCommand(client, "sm_buyvip");
+
+		else if (StrEqual(item, "2"))
+			ClientCommand(client, "sm_infovip");
+
+		else if (StrEqual(item, "3"))
+			ClientCommand(client, "sm_freevip");
+
+		else if (StrEqual(item, "4"))
+			ClientCommand(client, "sm_autorinfo");
+
+		else if (action == MenuAction_End)
+			delete vipMenu;
 	}
+	return 0;
 }
 
-void DoubleJump(int client)
+public Action cmd_buyvip(int client, int args)
 {
-	int fCurFlags = GetEntityFlags(client), fCurButtons = GetClientButtons(client);
+	PrintToChat(client, "dsada");
+	Menu buyVipMenu = new Menu(buyVipMenu_Handler);
+	buyVipMenu.SetTitle("VIP");
+	buyVipMenu.AddItem("30", "VIP 30 dni - 10 zł");
+	buyVipMenu.AddItem("15", "VIP 15 dni - 5 zł");
+	buyVipMenu.AddItem("7", "VIP 7 dni - 3 zł");
+	buyVipMenu.ExitButton = true;
+	buyVipMenu.Display(client, 0);
 
-	if (g_fLastFlags[client] & FL_ONGROUND)
+	return Plugin_Handled;
+}
+
+public int buyVipMenu_Handler(Menu buyVipMenu, MenuAction action, int client, int itemNum)
+{
+	if (action == MenuAction_Select)
 	{
-		if (!(fCurFlags & FL_ONGROUND) && !(g_fLastButtons[client] & IN_JUMP) && fCurButtons & IN_JUMP)
-		{
-			OriginalJump(client);
-		}
-	}
-	else if (fCurFlags & FL_ONGROUND)
-	{
-		Landed(client);
-	}
-	else if (!(g_fLastButtons[client] & IN_JUMP) && fCurButtons & IN_JUMP)
-	{
-		ReJump(client);
-	}
-	g_fLastFlags[client]   = fCurFlags;
-	g_fLastButtons[client] = fCurButtons;
-}
+		char item[32];
+		GetMenuItem(buyVipMenu, itemNum, item, sizeof(item));
 
-void OriginalJump(int client)
-{
-	g_iJumps[client]++;
-	LogMessage("original jump");
-}
-
-void Landed(int client)
-{
-	g_iJumps[client] = 0;
-	LogMessage("landed %d", g_iJumps);
-}
-
-void ReJump(int client)
-{
-	//if (g_cvVipDoubleJump)
-	//{
-		//if (CheckCommandAccess(client, "", ADMFLAG_RESERVATION, true))
-		//{
-			if (1 <= g_iJumps[client] <= g_iJumpMax)
-			{
-				g_iJumps[client]++;
-				float vVel[3];
-				GetEntPropVector(client, Prop_Data, "m_vecVelocity", vVel);
-				vVel[2] = g_flBoost;
-				TeleportEntity(client, NULL_VECTOR, NULL_VECTOR, vVel);
-				LogMessage("rejump");
-			}
-			LogMessage("i chuj");
-		//}
-	//}
-}
-
-public void convar_ChangeBoost(Handle convar, const char[] oldVal, const char[] newVal)
-{
-	g_flBoost = StringToFloat(newVal);
-}
-
-public void convar_ChangeEnable(Handle convar, const char[] oldVal, const char[] newVal)
-{
-	if (StringToInt(newVal) >= 1)
-	{
-		g_bDoubleJump = true;
+		if (StrEqual(item, "30"))
+			PrintToChat(client, "VIP na 30 dni");
+		if (StrEqual(item, "15"))
+			PrintToChat(client, "VIP na 15 dni");
+		if (StrEqual(item, "7"))
+			PrintToChat(client, "VIP na 7 dni");
 	}
 	else
 	{
-		g_bDoubleJump = false;
+		CloseHandle(buyVipMenu);
 	}
+	return 0;
 }
 
-public void convar_ChangeMax(Handle convar, const char[] oldVal, const char[] newVal)
+public Action cmd_infovip(int client, int args)
 {
-	g_iJumpMax = StringToInt(newVal);
-}
-
-public bool LastLevel(int client)
-{
-	if (IsValidClient(client) && IsPlayerAlive(client))
-	{
-		int weapon_count = 0;
-		for (int i = 0; i <= 4; i++)
-		{
-			int wpn = GetPlayerWeaponSlot(client, i);
-			if (wpn != -1)
-			{
-				weapon_count++;
-			}
-		}
-		if (weapon_count == 1)
-		{
-			// hat nur das Messer!
-			return true;
-		}
-		else
-		{
-			// noch weitere Waffen!
-			return false;
-		}
-	}
-	return false;
-}
-
-public bool IsValidClient(int client)
-{
-	if (!(1 <= client <= MaxClients) || !IsClientInGame(client))
-	{
-		return false;
-	}
-	return true;
-}
-
-public Action MenuVIP(int client, int args)
-{
-	Menu VIP = new Menu(VIPHandle);
-
-	VIP.SetTitle("VIP");
-	VIP.AddItem("sm_buyvip", "Kup VIP");
-	VIP.AddItem("sm_infovip", "Co daje VIP");
-	VIP.AddItem("sm_testvip", "Wytestuj VIP");
-	VIP.AddItem("sm_author", "Info o Autorze");
-
-	VIP.Display(client, MENU_TIME_FOREVER);
+	PrintToChat(client, "Co posiada VIP?");
+	if (g_cvShowVipJoinInfo)
+		PrintToChat(client, "Pokazywanie zadanych obrażeń");
+	if (g_cvShowVipJoinInfo)
+		PrintToChat(client, "Powiadomienie wszystkich o wejściu VIP'a");
+	if (g_cvDoubleJump)
+		PrintToChat(client, "Podwójny skok");
 
 	return Plugin_Handled;
 }
 
-public int VIPHandle(Menu VIP, MenuAction action, int client, int choice)
+public void OnMapStart()
 {
-	switch (action)
+	g_iRounds = 0;
+}
+
+public Action onRoundStart(Event event, const char[] name, bool dontBroadcast)
+{
+	g_iRounds = g_iRounds + 1;
+	return Plugin_Handled;
+}
+
+public Action onPlayerSpawn(Event event, const char[] name, bool dontBroadcast)
+{
+	int client = GetClientOfUserId(event.GetInt("userid"));
+
+	if (isPlayerVip(client))
 	{
-		case MenuAction_Start:
+		if (canShowWeaponsMenu(g_iRounds))
+			primaryWeaponMenu(client);
+		if (g_cvFreeGrenades)
+			prepareGiftGrenades(client);
+	}
+
+	return Plugin_Handled;
+}
+
+public Action cmd_weaponMenu(int client, int args)
+{
+	int iRound = g_iRounds - 1;
+	if (canShowWeaponsMenu(iRound))
+	{
+		primaryWeaponMenu(client);
+	}
+	else {
+		PrintHintText(client, "Menu wyboru broni włączone dopiero od 4 rundy! %d", g_iRounds);
+	}
+
+	return Plugin_Handled;
+}
+
+public Action primaryWeaponMenu(int client)
+{
+	if (isPlayerVip(client))
+	{
+		if (g_iWeaponMenuReceived == 0)
 		{
-			LogMessage("Start menu");
+			if (client > 0 && IsClientConnected(client) && IsClientInGame(client) && canShowWeaponsMenu(g_iRounds))
+			{
+				int iRoundTime = GameRules_GetProp("m_iRoundTime");
+				LogMessage("Halo: %d :olaH", iRoundTime);
+
+				Menu primaryMenu = new Menu(primaryMenu_Handler);
+
+				primaryMenu.SetTitle("Wybierz swoją broń!");
+				primaryMenu.AddItem("1", "AK-47");
+				primaryMenu.AddItem("2", "M4A1");
+				primaryMenu.AddItem("3", "M4A1-S");
+				primaryMenu.AddItem("4", "AWP");
+				primaryMenu.AddItem("5", "SCOUT");
+
+				primaryMenu.Display(client, 0);
+			}
 		}
-		case MenuAction_Select:
-		{
-			char info[32];
-			VIP.GetItem(choice, info, sizeof(info));
-			PrintToServer("User %d wybrał %s", client, info);
+		else {
+			PrintCenterText(client, "Menu wyboru broni dostępne tylko raz na rundę! %d", g_iWeaponMenuReceived);
 		}
 	}
+
+	return Plugin_Handled;
+}
+
+public int primaryMenu_Handler(Menu primaryMenu_Handler, MenuAction action, int client, int itemNum)
+{
+	if (action == MenuAction_Select)
+	{
+		g_iWeaponMenuReceived = 1;
+
+		char item[32];
+		primaryMenu_Handler.GetItem(itemNum, item, sizeof(item));
+
+		removePlayerWeapons(client);
+		GivePlayerItem(client, "weapon_knife");
+
+		if (StrEqual(item, "1"))
+			GivePlayerItem(client, "weapon_ak47");
+
+		else if (StrEqual(item, "2"))
+			GivePlayerItem(client, "weapon_m4a1");
+
+		else if (StrEqual(item, "3"))
+			GivePlayerItem(client, "weapon_m4a1_silencer");
+
+		else if (StrEqual(item, "4"))
+			GivePlayerItem(client, "weapon_awp");
+
+		else if (StrEqual(item, "5"))
+			GivePlayerItem(client, "weapon_ssg08");
+
+		else if (action == MenuAction_End)
+			delete primaryMenu_Handler;
+
+		secondaryWeaponMenu(client);
+	}
+	return 0;
+}
+
+public Action secondaryWeaponMenu(int client)
+{
+	if (isPlayerVip(client))
+	{
+		if (client > 0 && IsClientConnected(client) && IsClientInGame(client) && canShowWeaponsMenu(g_iRounds))
+		{
+			int iRoundTime = GameRules_GetProp("m_iRoundTime");
+			LogMessage("Halo: %d :olaH", iRoundTime);
+
+			Menu secondaryMenu = new Menu(secondaryMenu_Handler);
+
+			secondaryMenu.SetTitle("Wybierz swój pistolet!");
+			secondaryMenu.AddItem("1", "Deagle");
+			secondaryMenu.AddItem("2", "Five-Seven");
+			secondaryMenu.AddItem("3", "Tec-9");
+			secondaryMenu.AddItem("4", "P250");
+			secondaryMenu.AddItem("5", "R8 Revolver");
+			secondaryMenu.AddItem("6", "CZ75");
+			secondaryMenu.AddItem("7", "Dwie beretty");
+
+			secondaryMenu.Display(client, 0);
+		}
+	}
+
+	return Plugin_Handled;
+}
+
+public int secondaryMenu_Handler(Menu secondaryMenu_Handler, MenuAction action, int client, int itemNum)
+{
+	if (action == MenuAction_Select)
+	{
+		char item[32];
+		secondaryMenu_Handler.GetItem(itemNum, item, sizeof(item));
+
+		if (StrEqual(item, "1"))
+			GivePlayerItem(client, "weapon_deagle");
+
+		else if (StrEqual(item, "2"))
+			GivePlayerItem(client, "weapon_fiveseven");
+
+		else if (StrEqual(item, "3"))
+			GivePlayerItem(client, "weapon_tec9");
+
+		else if (StrEqual(item, "4"))
+			GivePlayerItem(client, "weapon_p250");
+
+		else if (StrEqual(item, "5"))
+			GivePlayerItem(client, "weapon_revolver");
+
+		else if (StrEqual(item, "6"))
+			GivePlayerItem(client, "weapon_cz75a");
+
+		else if (StrEqual(item, "7"))
+			GivePlayerItem(client, "weapon_elite");
+
+		else if (action == MenuAction_End)
+			delete secondaryMenu_Handler;
+	}
+	return 0;
+}
+
+public Action prepareGiftGrenades(int client)
+{
+	if (client > 0 && IsClientConnected(client) && IsClientInGame(client))
+	{
+		char name[64];
+		GetClientName(client, name, sizeof(name));
+		LogMessage("%s dostał granaty", name);
+		GivePlayerItem(client, "weapon_hegrenade");
+		GivePlayerItem(client, "weapon_smokegrenade");
+		GivePlayerItem(client, "weapon_flashbang");
+		if (GetClientTeam(client) == CS_TEAM_CT)
+		{
+			GivePlayerItem(client, "weapon_incgrenade");
+			GivePlayerItem(client, "item_defuser");
+		}
+		if (GetClientTeam(client) == CS_TEAM_T)
+		{
+			GivePlayerItem(client, "weapon_molotov");
+		}
+	}
+
+	return Plugin_Handled;
+}
+
+public Action cmd_autorinfo(int client, int args)
+{
+	PrintToChat(client, "Autorem pluginu jest SennyK! https://github.com/SennyK22");
+	char strModel[150];
+	GetEntPropString(4, Prop_Data, "m_ModelName", strModel, sizeof(strModel));
+
+	return Plugin_Handled;
+}
+
+stock bool canShowWeaponsMenu(int iNowRound)
+{
+	bool check = false;
+	if (iNowRound > 3 && iNowRound < 16)
+	{
+		check = true;
+	}
+	else if (iNowRound > 19)
+	{
+		check = true;
+	}
+	return check;
+}
+
+stock void removePlayerWeapons(int client)
+{
+	int iSlot;
+	for (int i = 0; i <= 2; i++)
+	{
+		while ((iSlot = GetPlayerWeaponSlot(client, i)) != -1)
+		{
+			RemovePlayerItem(client, iSlot);
+			AcceptEntityInput(iSlot, "Kill");
+		}
+	}
+}
+
+stock bool isPlayerVip(int client)
+{
+	char flag[10];
+	g_cvVipFlag.GetString(flag, sizeof(flag));
+
+	if (GetUserFlagBits(client) & ReadFlagString(flag) || GetAdminFlag(GetUserAdmin(client), Admin_Root) || g_iFreeVIP)
+		return true;
+	return false;
 }
